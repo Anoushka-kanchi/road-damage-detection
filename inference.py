@@ -5,7 +5,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEIGHTS = os.path.join(HERE, "weights", "best.pt")
 
-IMGSZ = 640
+IMGSZ = 768
 CONF = 0.001
 IOU = 0.45
 MAX_DET = 100
