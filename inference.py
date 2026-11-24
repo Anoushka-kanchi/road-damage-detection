@@ -1,49 +1,77 @@
-"""
-inference.py : the contract every team's repo must follow (this file is also the starter baseline).
 
-The organisers' benchmark_speed.py imports this file from the ROOT of your repo and calls, in this order:
-
-    model = load(device)                 # once, not timed. device is "cuda" or "cpu"
-    detections = predict(model, image)   # once per image, timed, batch size 1
-
-  image       : numpy array, shape [H, W, 3], dtype uint8, colour order RGB, the original image size
-  detections  : a list of tuples (class_id, score, x_min, y_min, x_max, y_max)
-                class_id 0 D00, 1 D10, 2 D20, 3 D40; score 0-1; box in pixels of the ORIGINAL image.
-                Return low-confidence detections too (score >= 0.001). At most 100 are used.
-
-Rules for this file: everything needed (code and weights) is in your repo; no internet access, no calls to
-outside APIs; load weights from a path relative to this file. Test-time augmentation, ensembles and tiling
-are allowed inside predict(), and their time is counted.
-
-This baseline fine-tunes an Ultralytics YOLO model; replace the body of load() / predict() with your own.
-"""
 import os
-
 import numpy as np
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-WEIGHTS = os.path.join(_HERE, "weights", "best.pt")
+HERE = os.path.dirname(os.path.abspath(__file__))
+WEIGHTS = os.path.join(HERE, "weights", "best.pt")
+
 IMGSZ = 640
+CONF = 0.001
+IOU = 0.45
+MAX_DET = 100
 
 
-class _Model:
+class Model:
     def __init__(self, yolo, device):
-        self.yolo, self.device = yolo, device
+        self.yolo = yolo
+        self.device = device
 
 
 def load(device="cuda"):
     from ultralytics import YOLO
-    return _Model(YOLO(WEIGHTS), device)
+
+    yolo = YOLO(WEIGHTS)
+    return Model(yolo, device)
 
 
 def predict(model, image):
-    bgr = np.ascontiguousarray(image[:, :, ::-1])  # Ultralytics treats numpy arrays as BGR
-    r = model.yolo.predict(bgr, imgsz=IMGSZ, conf=0.001, iou=0.6, max_det=100,
-                           device=model.device, verbose=False)[0]
-    if r.boxes is None or len(r.boxes) == 0:
+    # Convert RGB input to BGR for Ultralytics
+    bgr = np.ascontiguousarray(image[:, :, ::-1])
+
+    result = model.yolo.predict(
+        bgr,
+        imgsz=IMGSZ,
+        conf=CONF,
+        iou=IOU,
+        max_det=MAX_DET,
+        augment=True,
+        device=model.device,
+        verbose=False
+    )[0]
+
+    if result.boxes is None or len(result.boxes) == 0:
         return []
-    xyxy = r.boxes.xyxy.cpu().numpy()
-    conf = r.boxes.conf.cpu().numpy()
-    cls = r.boxes.cls.cpu().numpy().astype(int)
-    return [(int(c), float(s), float(b[0]), float(b[1]), float(b[2]), float(b[3]))
-            for c, s, b in zip(cls, conf, xyxy)]
+
+    boxes = result.boxes.xyxy.cpu().numpy()
+    scores = result.boxes.conf.cpu().numpy()
+    classes = result.boxes.cls.cpu().numpy().astype(int)
+
+    h, w = result.orig_shape
+    detections = []
+
+    for box, score, cls in zip(boxes, scores, classes):
+        x1, y1, x2, y2 = box
+
+        # Clamp coordinates to original image boundaries
+        x1 = np.clip(x1, 0, w)
+        x2 = np.clip(x2, 0, w)
+        y1 = np.clip(y1, 0, h)
+        y2 = np.clip(y2, 0, h)
+
+        # Reject invalid predictions
+        if not np.all(np.isfinite([x1, y1, x2, y2, score])):
+            continue
+
+        if x2 <= x1 or y2 <= y1:
+            continue
+
+        detections.append((
+            int(cls),
+            float(score),
+            float(x1),
+            float(y1),
+            float(x2),
+            float(y2)
+        ))
+
+    return detections
