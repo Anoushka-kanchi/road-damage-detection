@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-WEIGHTS = os.path.join(HERE, "weights", "best.pt")
+WEIGHTS = os.path.join(HERE, "best.pt")
 
 IMGSZ = 768
 CONF = 0.001
