@@ -1,6 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
 Flask
 numpy
 Pillow
-torch
 ultralytics
 gunicorn
